@@ -26,7 +26,9 @@ plugins {
 }
 
 // Remove the gradleApi so it isn't merged into the jar file.
-configurations.compile.dependencies.remove dependencies.gradleApi()
+configurations.named(JavaPlugin.API_CONFIGURATION_NAME) {
+    dependencies.remove(project.dependencies.gradleApi())
+}
 
 gradlePlugin {
     automatedPublishing = false

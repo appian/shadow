@@ -1,7 +1,4 @@
-apply plugin: 'com.jfrog.bintray'
 apply plugin: 'maven-publish'
-apply plugin: 'com.jfrog.artifactory'
-apply plugin: "com.gradle.plugin-publish"
 
 group = 'com.github.jengelman.gradle.plugins'
 def versionString = file('src/main/resources/shadow-version.txt').text.trim()
@@ -9,9 +6,6 @@ if (System.env.CIRCLE_TAG && System.env.CIRCLE_TAG =~  /^\d\.\d\.\d$/) {
     version = System.env.CIRCLE_TAG
 } else {
     version = versionString
-    if (!version.endsWith("-SNAPSHOT")) {
-        version = version + "-SNAPSHOT"
-    }
 }
 
 ext.isSnapshot = version.endsWith("SNAPSHOT")
@@ -34,6 +28,19 @@ def pomConfig = {
 }
 
 publishing {
+    repositories {
+        maven {
+            if (version.toString().endsWith('-SNAPSHOT'))  {
+                url 'https://artifacts.eng.appianci.net/artifactory/snapshots'
+            } else {
+                url 'https://artifacts.eng.appianci.net/artifactory/releases'
+            }
+            credentials {
+                username appianArtifactsUsername
+                password appianArtifactsApiKey
+            }
+        }
+    }
     publications {
         plugin(MavenPublication) {
             shadow.component(it)
@@ -49,101 +56,6 @@ publishing {
     }
 }
 
-artifactory {
-    contextUrl = 'https://oss.jfrog.org/artifactory'
-    publish {
-        repository {
-            repoKey = 'oss-snapshot-local'
-        }
-        defaults {
-            publications 'plugin'
-        }
-    }
-}
-
-artifactoryPublish { task ->
-    doFirst {
-        if (!isSnapshot) {
-            throw new GradleException('Cannot publish non-SNAPSHOT versions to OJO!')
-        }
-    }
-    gradle.taskGraph.whenReady { taskGraph ->
-        if (taskGraph.hasTask(task)) {
-            project.artifactory {
-                publish {
-                    repository {
-                        username = bintrayUser
-                        password = bintrayKey
-                    }
-                }
-            }
-        }
-    }
-}
-
-bintrayUpload { task ->
-    doFirst {
-        if (isSnapshot) {
-            throw new GradleException('Cannot publish SNAPSHOT versions to BinTray!')
-        }
-    }
-    gradle.taskGraph.whenReady { taskGraph ->
-        if (taskGraph.hasTask(task)) {
-            task.user = bintrayUser
-            task.apiKey = bintrayKey
-        }
-    }
-}
-
-bintray {
-    publications = ['plugin']
-    publish = true
-    pkg {
-        repo = 'gradle-plugins'
-        name = 'gradle-shadow-plugin'
-        licenses = ['Apache-2.0']
-        desc = 'Create uber-jar containing application code and dependencies.'
-        labels = ['gradle', 'onejar', 'fatjar', 'uberjar', 'shade']
-        websiteUrl = 'https://github.com/johnrengelman/shadow'
-        issueTrackerUrl = 'https://github.com/johnrengelman/shadow/issues'
-        vcsUrl = 'https://github.com/johnrengelman/shadow.git'
-        version {
-            vcsTag = versionString
-            attributes = [
-                    'gradle-plugin': 'com.github.johnrengelman.shadow:com.github.jengelman.gradle.plugins:shadow'
-            ]
-        }
-    }
-}
-
-pluginBundle {
-    website = 'https://github.com/johnrengelman/shadow'
-    vcsUrl = 'https://github.com/johnrengelman/shadow'
-    description = 'A Gradle plugin for collapsing all dependencies and project code into a single Jar file.'
-    tags = ['onejar', 'shade', 'fatjar', 'uberjar']
-
-    plugins {
-        shadowPlugin {
-            id = 'com.github.johnrengelman.shadow'
-            displayName = 'Shadow Plugin'
-        }
-    }
-
-    mavenCoordinates {
-        groupId = project.group
-        artifactId = project.name
-
-    }
-}
-
-publishPlugins { task ->
-    doFirst {
-        if (isSnapshot) {
-            throw new GradleException('Cannot publish SNAPSHOT versions to Plugin Portal!')
-        }
-    }
-}
-
 task release() {
-    dependsOn 'assemble', 'bintrayUpload', 'publishPlugins', 'gitPublishPush'
+    dependsOn 'assemble', 'publish'
 }
